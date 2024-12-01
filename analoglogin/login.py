@@ -1,89 +1,77 @@
-# -*- coding: utf-8 -*- 
+# -*- coding: utf-8 -*-
+import getpass
 
 import requests
-from bs4 import BeautifulSoup
-import re
 import time
-from .hex2b64 import HB64 
-from .RSAJS import RSAKey
-import json
-import getpass
 import sys
 
 
-class Loginer():
 
-    sessions = requests.Session()
-    time = int(time.time())
+class Loginer:
+    def __init__(self):
+        self.sessions = requests.Session()
+        self.cookie = None
 
-    def __init__(self, user, passwd):                       
-        self.user = str(user)
-        self.passwd = str(passwd)
-    
-    def reflush_time(self):
-        self.time = int(time.time())
-        
-    def get_public(self):                      
-        url = 'http://202.119.206.62/jwglxt/xtgl/login_getPublicKey.html?time='+str(self.time)
-        r = self.sessions.get(url)
-        self.pub = r.json()
-
-    def get_csrftoken(self):                    
-        url = 'http://202.119.206.62/jwglxt/xtgl/login_slogin.html?language=zh_CN&_t='+str(self.time)
-        r = self.sessions.get(url)
-        r.encoding = r.apparent_encoding
-        soup = BeautifulSoup(r.text, 'html.parser')
-        self.token = soup.find('input', attrs={'id': 'csrftoken'}).attrs['value']
-
-    def process_public(self, str):               
-        self.exponent = HB64().b642hex(self.pub['exponent'])   
-        self.modulus = HB64().b642hex(self.pub['modulus'])        
-        rsa = RSAKey()
-        rsa.setPublic(self.modulus, self.exponent)                         
-        cry_data = rsa.encrypt(str)
-        return HB64().hex2b64(cry_data)
-
-    def post_data(self):                   
+    def manual_login(self):
+        """手动登录并输入 Cookie"""
+        print('请手动登录到系统，并将浏览器中的 Cookie 粘贴到此处：')
+        cookie_str = input('请输入 Cookie: ')
         try:
-            url = 'http://202.119.206.62/jwglxt/xtgl/login_slogin.html'
-            header = {
-                'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',	
-                'Accept-Encoding':'gzip, deflate',
-                'Accept-Language':'zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2',
-                'Connection':'keep-alive',
-                'Content-Length':'470',
-                'Content-Type':'application/x-www-form-urlencoded',
-                'Host':'202.119.206.62',
-                'Referer':'http://202.119.206.62/jwglxt/xtgl/login_slogin.html?language=zh_CN&_t='+str(self.time),
-                'Upgrade-Insecure-Requests':'1',
-                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:58.0) Gecko/20100101 Firefox/58.0',	
-            }
-            self.header = header 
-            data = {
-                'csrftoken': self.token,
-                'mm': self.process_public(self.passwd),            
-                'mm': self.process_public(self.passwd),            
-                'yhm': self.user
-            }
-            self.req = self.sessions.post(url, headers = header, data = data)
-            self.cookie = self.req.request.headers['cookie']
-            ppot = r'用户名或密码不正确'
-            if re.findall(ppot, self.req.text):
-                print('用户名或密码错误,请查验..')
-                sys.exit()
-        except:
-            print('登录失败,请检查网络配置或检查账号密码...')
+            self.cookie = {k: v for k, v in (x.split('=') for x in cookie_str.split('; '))}
+            # 将 cookie 设置到 session 中
+            self.sessions.cookies.update(self.cookie)
+            print('Cookie 已保存。')
+        except Exception as e:
+            print('Cookie 格式错误，请检查输入...')
             sys.exit()
 
-            
+    def test_login(self):
+        """测试是否登录成功"""
+        try:
+            url = 'http://202.119.206.41/jwglxt/xtgl/index_initMenu.html'
+            response = self.sessions.get(url)
+
+            # 检查登录状态
+            if '用户登录' in response.text or '登录超时' in response.text:
+                print('登录失败，请检查 Cookie 是否正确或已过期...')
+                sys.exit()
+            else:
+                print('登录成功！')
+                return True
+        except Exception as e:
+            print('登录失败，请检查网络连接...')
+            sys.exit()
+
+    def get_session(self):
+        return self.sessions
+
+    def get_cookie(self):
+        return self.cookie
+
+def logtime():
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+def logging(foo):
+    def wrapper(*args, **kwargs):
+        print('[+]'+logtime()+' 尝试登录中...')
+        start = time.time()
+        foo(*args, **kwargs)
+        end = time.time()
+        duration = end - start
+        q = "Good" if duration < 2 else "Normal" if duration < 10 else "Bad"
+        print('[+]'+logtime()+' 登录成功!')
+        print('[+]'+logtime()+' 登录用时: '+str(duration)[:6]+'s, 网络质量: '+q)
+        print('[+]'+logtime()+' 启动线程中...')
+    return wrapper
+
 class Grades(Loginer):
 
     def __init__(self, user, passwd, year="none", term="none"):
         super().__init__(user, passwd)
         self.year = year
         self.term = term
-        self.url1 = 'http://202.119.206.62/jwglxt/cjcx/cjcx_cxDgXscj.html?gnmkdm=N305005&layout=default&su='+user        
-        self.url2 = 'http://202.119.206.62/jwglxt/cjcx/cjcx_cxDgXscj.html?doType=query&gnmkdm=N305005'
+        self.url1 = 'http://202.119.206.41/jwglxt/cjcx/cjcx_cxDgXscj.html?gnmkdm=N305005&layout=default&su='+user        
+        self.url2 = 'http://202.119.206.41/jwglxt/cjcx/cjcx_cxDgXscj.html?doType=query&gnmkdm=N305005'
 
     def welcome(self):
         try:
